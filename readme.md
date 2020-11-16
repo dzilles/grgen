@@ -1,4 +1,4 @@
-# A sample Python project
+# Mesh generation using Kohonen self-organizing maps
 
 ![Python Logo](https://www.python.org/static/community_logos/python-logo.png "Sample inline image")
 
