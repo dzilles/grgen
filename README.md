@@ -2,7 +2,7 @@
 
 A mesh generator using machine learning. In particular the software uses the Kohonen self organizing map
 based on the work of T. Kohonen [[1]](#1) and O. Nechaeva [[2]](#2) where some input structured or unstructured mesh is trained to represent the input geometry. The following animation shows the learning process:
-![me](https://github.com/dzilles/grgen/data/naca.gif)
+![me](https://github.com/dzilles/grgen/tree/main/data/naca.gif)
 
 ----
 
