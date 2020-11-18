@@ -1,11 +1,11 @@
 # Mesh generation using Kohonen self-organizing maps
 
 A mesh generator using machine learning. In particular the software uses the Kohonen self organizing map
-based on the work of T. Kohonen a[[1]](#1) and O. Nechaeva[[2]](#2) where some input structured or unstructured mesh is trained to represent the input geometry. The following animation shows the learning process:
+based on the work of T. Kohonen [[1]](#1) and O. Nechaeva [[2]](#2) where some input structured or unstructured mesh is trained to represent the input geometry. The following animation shows the learning process:
 
 ----
 
-# Installation
+## Installation
 
 The software is installed by executing the command 'python setup.py' in the main folder.
 Multiple examples can be found in the [tests folder][tests].
@@ -13,11 +13,11 @@ The source for this project is available [here][src/grgen].
 
 ----
 
-# Theory
+## Theory
 
 ----
 
-# Usage
+## Usage
 
 ----
 
