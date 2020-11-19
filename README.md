@@ -15,10 +15,9 @@ The source for this project is available [here](src/grgen).
 
 ## Usage
 
-After installing you can start the two examples by executing `grgen_example_naca` or `grgen_example_sphere` in the terminal.
-If all necessary packages are installed, you can just execute the example file in the source folder with `python3 nacaExample.py` or `python3 sphereExample.py` without installation.
-
-Since this project is in a pre-alpha stage and just a proof of concept there is currently no way to output the grid files. If you want to use different input geometries follow the two examples for a [NACA profile](src/grgen/nacaExample.py) and a [sphere](src/grgen/sphereExample.py). 
+After installing, the two examples in the [examples folder](examples) can be started by executing 
+`python grgen_example_naca` or `python grgen_example_sphere`.
+The exact usage of the package is documented in these example files.
 
 ----
 
