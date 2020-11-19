@@ -74,11 +74,11 @@ setup(
         #   3 - Alpha
         #   4 - Beta
         #   5 - Production/Stable
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 2 - Pre-Alpha',
 
         # Indicate who your project is intended for
-        'Intended Audience :: Developers',
-        'Topic :: Software Development :: Build Tools',
+        'Intended Audience :: Science/Research',
+        'Topic :: Scientific/Engineering',
 
         # Pick your license as you wish
         'License :: OSI Approved :: MIT License',
@@ -104,7 +104,7 @@ setup(
 
     # When your source code is in a subdirectory under the project root, e.g.
     # `src/`, it is necessary to specify the `package_dir` argument.
-    package_dir={'': 'src'},  # Optional
+    package_dir={'': 'src/grgen/'},  # Optional
 
     # You can just specify package directories manually here if your project is
     # simple. Or you can use find_packages().
@@ -129,7 +129,7 @@ setup(
     #
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
-    install_requires=['tensorflow', 'numpy', 'matplotlib', 'scipy', 'shapely'],  # Optional
+    install_requires=['tensorflow', 'numpy<1.19.0,>=1.16.0', 'matplotlib', 'scipy', 'shapely', 'imageio'],  # Optional
 
     # List additional groups of dependencies here (e.g. development
     # dependencies). Users will be able to install these using the "extras"
@@ -139,16 +139,16 @@ setup(
     #
     # Similar to `install_requires` above, these must be valid existing
     # projects.
-    extras_require={  # Optional
-        'dev': ['check-manifest'],
-        'test': ['coverage'],
-    },
+    #extras_require={  # Optional
+    #    'dev': ['check-manifest'],
+    #    'test': ['coverage'],
+    #},
 
     # If there are data files included in your packages that need to be
     # installed, specify them here.
-    package_data={  # Optional
-        'sample': ['package_data.dat'],
-    },
+    #package_data={  # Optional
+    #    'sample': ['package_data.dat'],
+    #},
 
     # Although 'package_data' is the preferred approach, in some case you may
     # need to place data files outside of your packages. See:
@@ -166,7 +166,7 @@ setup(
     # executes the function `main` from this package when invoked:
     entry_points={  # Optional
         'console_scripts': [
-            'sample=sample:main',
+            'grgennaca=grgen.src.grgen.nacaExample:main',
         ],
     },
 
@@ -181,8 +181,8 @@ setup(
     # what's used to render the link text on PyPI.
     project_urls={  # Optional
         'Bug Reports': 'https://github.com/dzilles/grgen/issues',
-        'Funding': 'https://donate.pypi.org',
-        'Say Thanks!': 'http://saythanks.io/to/example',
+    #    'Funding': 'https://donate.pypi.org',
+    #    'Say Thanks!': 'http://saythanks.io/to/example',
         'Source': 'https://github.com/dzilles/grgen/',
     },
 )

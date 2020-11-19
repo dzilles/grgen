@@ -1,24 +1,24 @@
 # Mesh generation using Kohonen self-organizing maps
 
 A mesh generator using machine learning. In particular the software uses the Kohonen self organizing map
-based on the work of T. Kohonen [[1]](#1) and O. Nechaeva [[2]](#2) where some input structured or unstructured mesh is trained to represent the input geometry. The following animation shows the learning process:
+based on the work of T. Kohonen [[1]](#1) and O. Nechaeva [[2]](#2) where some input structured or unstructured mesh is trained to represent the input geometry. The following animation shows the learning process for a NACA geometry:
 ![NACA](https://github.com/dzilles/grgen/raw/main/data/naca.gif)
 
 ----
 
 ## Installation
 
-The software is installed by executing the command 'python setup.py' in the main folder.
-Multiple examples can be found in the [tests folder][tests].
-The source for this project is available [here][src/grgen].
-
-----
-
-## Theory
+The software is installed by executing the command 'pip install -e .' in the main folder.
+The source for this project is available [here](src/grgen).
 
 ----
 
 ## Usage
+
+After installing you can start the two examples by executing `grgen_example_naca` or `grgen_example_sphere` in the terminal.
+If all necessary packages are installed, you can just execute the example file in the source folder with `python3 nacaExample.py` or `python3 sphereExample.py` without installation.
+
+Since this project is in a pre-alpha stage and just a proof of concept there is currently no way to output the grid files. If you want to use different input geometries follow the two examples for a [NACA profile](src/grgen/nacaExample.py) and a [sphere](src/grgen/sphereExample.py). 
 
 ----
 
