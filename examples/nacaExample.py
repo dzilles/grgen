@@ -1,4 +1,4 @@
-from grgen import Kohonen
+from grgen.kohonen import Kohonen
 import numpy as np
 
 def buildPolygonNACA(xx):
@@ -30,8 +30,5 @@ def main():
     som.smoothing()
     som.printTimerSummary()
 
-if __name__ == "__main__":
-
+if __name__ == '__main__':
     main()
-
-
