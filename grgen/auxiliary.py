@@ -79,7 +79,7 @@ class Plotter:
         self.path = path
         self.outputName = outputName
 
-    def plot(self,it, x, y, con, png = False):
+    def draw(self,it, x, y, con, png = False):
         """ save figure as png or plot figure """
 
         if(png):
@@ -92,13 +92,6 @@ class Plotter:
 
             fig.savefig(name)
             plt.close(fig)
-        else:
-
-            plt.clf()
-            plt.triplot(self.weightsTf[:,0], self.weightsTf[:,1], self.connection) 
-            plt.gca().set_aspect('equal', adjustable='box')
-            plt.draw()
-            plt.pause(0.0001)
 
 
     def sorted_alphanumeric(self, data):
@@ -143,6 +136,12 @@ def calculateGridQuality():
     orthogonality = None
     smoothness = None
 
+def plot(x, y, con):
+    plt.clf()
+    plt.triplot(x, y, con) 
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.draw()
+    plt.pause(0.0001)
 
 
 

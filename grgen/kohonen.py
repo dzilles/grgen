@@ -25,6 +25,8 @@ import random
 from shapely.geometry import Point, Polygon
 from shapely.ops import nearest_points
 from grgen.auxiliary import Timer
+from grgen.auxiliary import plot
+import matplotlib.pyplot as plt
 
 """
 Implementation of the Kohonen self-organizing map where a grid is trained to represent some input geometry.
@@ -118,6 +120,8 @@ class Kohonen:
         if iterations == None:
             self.iterations = 10*self.noPoints
         self.iterations = int(iterationsFactor*self.iterations)
+
+        self.calculateBoundaryProbability()
 
     def getBoundingBox(self):
         """ Calculate the bounding box of the input geometry """
@@ -302,7 +306,7 @@ class Kohonen:
     def produceRandomInputBoundary(self, tensorflow=True):
         """ produce random point for the learning step on the boundary """
 
-        self.timer.startTimer()
+        self.timer.startTimer("produceRandomInputBoundary")
 
         idx = np.random.choice(len(self.geometry), size = 1, p=self.geometryProbability )
 
@@ -367,7 +371,7 @@ class Kohonen:
 
         self.timer.stopTimer("moveBoundaryPoints")
 
-    def trainingOperation(self, it, inputData, searchSet, searchSetStart, trainingSet, trainingSetStart, scatter = None, indices = None):
+    def trainingOperation(self, it, inputData, searchSet, searchSetStart, trainingSetStart):
         """ ordering stage for all cells """
 
         squaredDistance = tf.reduce_sum( (searchSet - tf.expand_dims(inputData, axis=0))**2, axis = 1)
@@ -383,28 +387,55 @@ class Kohonen:
 
         radius = tf.cast(self.minRadius + X*(self.maxRadius*0.05**(it/iterations) - self.minRadius)*(it**(-0.25)),dtype=np.float32)
 
-        lateralConnection = self.s**(startDistance/(radius**2))
+        lateralConnection = self.s**(squaredDistanceStart/(radius**2))
 
-        trainingSet = tf.Variable(trainingSet + (tf.expand_dims(delta*lateralConnection, axis=1)*(tf.expand_dims(inputData, axis=0) - trainingSet)), dtype=np.float32)
+        self.tmpWeights = tf.Variable(self.tmpWeights + (tf.expand_dims(delta*lateralConnection, axis=1)*(tf.expand_dims(inputData, axis=0) - self.tmpWeights)), dtype=np.float32)
 
-        if (scatter != None):
-            scatter = tf.gather(trainingSet, indices)
+    def smoothingOperation(self, it, inputData, searchSet, searchSetStart, trainingSetStart):
+        """ ordering stage for all cells """
 
-    def training(self):
+        squaredDistance = tf.reduce_sum( (searchSet - tf.expand_dims(inputData, axis=0))**2, axis = 1)
+
+        bmuIndex = tf.argmin(squaredDistance, axis=0)
+
+        X = tf.cast(1 - tf.exp(5*(it-self.iterations)/self.iterations), dtype=np.float32)
+        delta = tf.cast((it)**(-0.2) * X, dtype=np.float32)
+
+        squaredDistanceStart = tf.cast(tf.reduce_sum( (trainingSetStart - tf.expand_dims(searchSetStart[bmuIndex,:], axis=0))**2, axis = 1)/(self.spacing**2), dtype=np.float32)
+
+        iterations = tf.cast(self.iterations, dtype=np.float32)
+
+        radius = tf.cast(self.minRadius + X*(self.maxRadius*0.05**(it/iterations) - self.minRadius)*(it**(-0.25)),dtype=np.float32)
+
+        lateralConnection = self.s**(squaredDistanceStart/(radius**2))
+
+        self.tmpWeights = tf.Variable(self.tmpWeights + (tf.expand_dims(delta*lateralConnection, axis=1)*(tf.expand_dims(inputData, axis=0) - self.tmpWeights)), dtype=np.float32)
+
+    def train(self):
         """ train the grid """
 
-        self.timer.startTimer("training")
-        self.timer.stopTimer("smoothing")
+        self.timer.startTimer("train")
 
-        searchSet = tf.gather()        
+        self.weights = tf.Variable(self.weights, dtype=np.float32)
+        self.tmpWeights = tf.gather(self.weights, self.boundaryPoints)
+        searchSet = tf.cast(tf.gather(self.weights, self.boundaryPoints), dtype=np.float32)
+        searchSetStart = tf.gather(self.startWeights, self.boundaryPoints)
+        trainingSetStart = tf.gather(self.startWeights, self.boundaryPoints)
 
         for it in range(1, int(self.iterations)):
+    
+            self.trainingOperation(it, 
+                                   self.produceRandomInputBoundary(), 
+                                   searchSet,
+                                   searchSetStart,
+                                   trainingSetStart)
 
-            inputData = produceRandomInputBoundary()
-        
-            self.trainingOperation(it, inputData, searchSet, searchSetStart, trainingSet, trainingSetStart, self.weights, self.boundaryPoints)
+            if(it%200==0):
 
-    def smoothing(self):
+        tf.compat.v1.scatter_update(self.weights, self.boundaryPoints, self.tmpWeights)
+        self.timer.stopTimer("train")
+
+    def smooth(self):
         """ smooth the grid """
 
         self.timer.startTimer("smoothing")

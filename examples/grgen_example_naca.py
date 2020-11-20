@@ -37,7 +37,7 @@ def main():
 
     som.summary()
     # 4) The training can be started after the initialization of the model
-    #som.training()
+    som.train()
 
     # 5) A different algorithm is used for the smoothing of the grid
     #som.smoothing()
