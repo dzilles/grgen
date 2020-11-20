@@ -3,6 +3,13 @@
 A mesh generator using machine learning. In particular the software uses the Kohonen self organizing map
 based on the work of T. Kohonen [[1]](#1) and O. Nechaeva [[2]](#2) where some input structured or unstructured mesh is trained to represent the input geometry. The following animation shows the learning process for a NACA geometry:
 ![NACA](https://github.com/dzilles/grgen/raw/main/examples/output/naca.gif)
+Currently this project is in a **pre-alpha stage and has a few limitations**:
+
+- limited speed especially for large meshes: it may be possible to address this problem by using mini-batch learning for self-organizing maps
+- only unstructured triangular meshes: it is possible to use this algorithm for structured meshes since the mesh topology remains
+- adaptive meshes are not implemented
+- grid quality can't be guaranteed
+- only 2-dimensionsal
 
 ----
 

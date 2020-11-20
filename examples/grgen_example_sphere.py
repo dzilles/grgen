@@ -30,10 +30,10 @@ def main():
     geometry = buildPolygonSphere(0.3)
 
     # 3) The model is initialized
-    som = Kohonen(0.05, geometry, training = "online")
+    som = Kohonen(0.02, geometry, training = "online")
 
     # 4) The training can be started after the initialization of the model
-    som.train()
+    som.training()
 
     # 5) A different algorithm is used for the smoothing of the grid
     som.smoothing()
