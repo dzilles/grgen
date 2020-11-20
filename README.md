@@ -15,7 +15,7 @@ Currently this project is in a **pre-alpha stage and has a few limitations**:
 
 ## Installation
 
-The software is installed by executing the command 'pip install -e .' in the main folder.
+The software is installed by executing the command `pip install -e .` in the main folder.
 The source for this project is available [here](src/grgen).
 
 ----
