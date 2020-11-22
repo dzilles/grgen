@@ -5,11 +5,20 @@ based on the work of T. Kohonen [[1]](#1) and O. Nechaeva [[2]](#2) where some i
 ![NACA](https://github.com/dzilles/grgen/raw/main/examples/output/naca.gif)
 
 Currently this project is in a **pre-alpha stage and has a few limitations**:
-- limited speed especially for large meshes: it may be possible to address this problem by using mini-batch learning for self-organizing maps
+- limited speed especially for large meshes: it may be possible to address this problem by using batch learning for self-organizing maps
 - only unstructured triangular meshes: it is possible to use this algorithm for structured meshes since the mesh topology remains
 - adaptive meshes are not implemented
 - grid quality can't be guaranteed
 - only 2-dimensionsal
+
+**TODO**:
+- implementation of batch learning.
+- eliminate the border effect (bad quality of the mesh near boundaries) for batch learning. Without batch learning this algorithm is of limited use because of speed limitations.
+- implementation of 1D and 3D meshes
+- implementation of different structured and unstructured mesh types
+- speed up the construction of the initial grid (e.g. by using some tree structure)
+- implement kd-tree for nearest neighbor search
+- documentation
 
 ----
 

@@ -36,7 +36,7 @@ class Kohonen:
 
     """ The class of the self-organizing map """
 
-    def __init__(self, spacing, geometry, dim=2, s=0.1, iterations=None, iterationsFactor=1, minRadius=None, maxRadius=None, training="online", batchSize = 25, gridType="unstructured", vertexType="triangular"):
+    def __init__(self, spacing, geometry, dim=2, s=0.5, iterations=None, iterationsFactor=1, minRadius=None, maxRadius=None, training="online", batchSize = 3000, gridType="unstructured", vertexType="triangular"):
 
         """ Initialization of the Kohonen class 
 
@@ -69,19 +69,22 @@ class Kohonen:
         # Weights of the Kohonen network. Also the grid coordinates of all cells.
         self.weights = None
         self.startWeights = None
-        self.noCells = None
+        # The position of coordinates can be fixed by using this array of booleans.
+        self.mask = None
         self.noPoints = None
         self.noInternalPoints = None
         self.noBoundaryPoints = None
+        self.noCells = None
         # Minimum and maximum coordinates of the geometry
         self.boundingBox = None
 
         self.eps = 10e-5
+        self.dataType = np.float32
 
         # Storage for the learning operation
         self.randomInput = None
         self.squaredDistance = None
-        self.manDistance = None
+        self.squaredDistanceStart = None
         self.lateralConnection = None
         self.geometryProbability = None
         self.vertexProbability = None
@@ -122,6 +125,14 @@ class Kohonen:
         self.iterations = int(iterationsFactor*self.iterations)
 
         self.calculateBoundaryProbability()
+
+        self.mask = np.ones(tf.shape(self.weights), dtype=bool)
+
+        #self.maskCornerPoints()
+
+    #def maskCornerPoints():
+
+        
 
     def getBoundingBox(self):
         """ Calculate the bounding box of the input geometry """
@@ -259,7 +270,7 @@ class Kohonen:
     def produceRandomInput(self, tensorflow=True):
         """ produce random point for the learning step """
 
-        self.timer.startTimer()
+        self.timer.startTimer("produceRandomInput")
 
         minX = self.boundingBox[0,0]
         minY = self.boundingBox[1,0]
@@ -337,7 +348,7 @@ class Kohonen:
 
         for i in range(0, self.batchSize):
 
-            batchData[i,:] = self.produceRandomInput(False)
+            batchData[i,:] = self.produceRandomInputBoundary(False)
 
         return tf.Variable(batchData, dtype=np.float32)
 
@@ -371,88 +382,125 @@ class Kohonen:
 
         self.timer.stopTimer("moveBoundaryPoints")
 
-    def trainingOperation(self, it, inputData, searchSet, searchSetStart, trainingSetStart):
+    def trainingOperation(self, it, inputData, searchSet, searchSetStart, trainingSetStart, mask, delta, radius, k=0):
         """ ordering stage for all cells """
 
+        # squared euclidean distance of all weights to the random input data
         squaredDistance = tf.reduce_sum( (searchSet - tf.expand_dims(inputData, axis=0))**2, axis = 1)
 
+        # calculate the best matching unit
         bmuIndex = tf.argmin(squaredDistance, axis=0)
 
-        X = tf.cast(1 - tf.exp(5*(it-self.iterations)/self.iterations), dtype=np.float32)
-        delta = tf.cast((it)**(-0.2) * X, dtype=np.float32)
-
+        # calculate the neighbourhood
         squaredDistanceStart = tf.cast(tf.reduce_sum( (trainingSetStart - tf.expand_dims(searchSetStart[bmuIndex,:], axis=0))**2, axis = 1)/(self.spacing**2), dtype=np.float32)
 
-        iterations = tf.cast(self.iterations, dtype=np.float32)
+        lateralConnection = self.s**((tf.math.sqrt(squaredDistanceStart) + k)**2/(radius**2))
 
-        radius = tf.cast(self.minRadius + X*(self.maxRadius*0.05**(it/iterations) - self.minRadius)*(it**(-0.25)),dtype=np.float32)
+        tf.tensor_scatter_nd_update(self.tmpWeights, mask, tf.boolean_mask(tf.Variable(self.tmpWeights + (tf.expand_dims(delta*lateralConnection*(1 + k*tf.math.sqrt(squaredDistanceStart)), axis=1)*(tf.expand_dims(inputData, axis=0) - self.tmpWeights)), dtype=np.float32), mask))
 
-        lateralConnection = self.s**(squaredDistanceStart/(radius**2))
+    def trainingOperationBatch(self, it, inputData, searchSet, searchSetStart, trainingSetStart):
+        """ ordering stage for all cells batch learning (not working)"""
 
-        self.tmpWeights = tf.Variable(self.tmpWeights + (tf.expand_dims(delta*lateralConnection, axis=1)*(tf.expand_dims(inputData, axis=0) - self.tmpWeights)), dtype=np.float32)
+        self.squaredDistance = tf.reduce_sum(tf.pow(tf.subtract(tf.expand_dims(searchSet, axis=0),tf.expand_dims(inputData, axis=1)), 2), 2)
 
-    def smoothingOperation(self, it, inputData, searchSet, searchSetStart, trainingSetStart):
-        """ ordering stage for all cells """
-
-        squaredDistance = tf.reduce_sum( (searchSet - tf.expand_dims(inputData, axis=0))**2, axis = 1)
-
-        bmuIndex = tf.argmin(squaredDistance, axis=0)
+        bmuIndex = tf.argmin(self.squaredDistance, axis=1)
 
         X = tf.cast(1 - tf.exp(5*(it-self.iterations)/self.iterations), dtype=np.float32)
-        delta = tf.cast((it)**(-0.2) * X, dtype=np.float32)
 
-        squaredDistanceStart = tf.cast(tf.reduce_sum( (trainingSetStart - tf.expand_dims(searchSetStart[bmuIndex,:], axis=0))**2, axis = 1)/(self.spacing**2), dtype=np.float32)
+        self.squaredDistanceStart = tf.cast(tf.math.sqrt(tf.reduce_sum(tf.expand_dims(searchSetStart, axis=0) - tf.expand_dims(tf.gather(searchSetStart, bmuIndex), axis=1), 2)**2), dtype=np.float32)
 
-        iterations = tf.cast(self.iterations, dtype=np.float32)
+        self.squaredDistanceStart = self.squaredDistanceStart/(self.spacing)
 
-        radius = tf.cast(self.minRadius + X*(self.maxRadius*0.05**(it/iterations) - self.minRadius)*(it**(-0.25)),dtype=np.float32)
+        self.lateralConnection = delta*self.s**(self.squaredDistanceStart/(radius))
 
-        lateralConnection = self.s**(squaredDistanceStart/(radius**2))
+        self.numerator = tf.reduce_sum(tf.expand_dims(self.lateralConnection, axis=-1) * tf.expand_dims(inputData, axis=1), axis=0)
+    
+        self.denominator = tf.expand_dims(tf.reduce_sum(self.lateralConnection,axis=0)+10e-20, axis=-1)
 
-        self.tmpWeights = tf.Variable(self.tmpWeights + (tf.expand_dims(delta*lateralConnection, axis=1)*(tf.expand_dims(inputData, axis=0) - self.tmpWeights)), dtype=np.float32)
+        self.tmpWeights = self.numerator / self.denominator
 
     def train(self):
         """ train the grid """
+
+        print("adaption")
 
         self.timer.startTimer("train")
 
         self.weights = tf.Variable(self.weights, dtype=np.float32)
         self.tmpWeights = tf.gather(self.weights, self.boundaryPoints)
-        searchSet = tf.cast(tf.gather(self.weights, self.boundaryPoints), dtype=np.float32)
         searchSetStart = tf.gather(self.startWeights, self.boundaryPoints)
         trainingSetStart = tf.gather(self.startWeights, self.boundaryPoints)
+        mask = tf.gather(self.mask, self.boundaryPoints)
+
 
         for it in range(1, int(self.iterations)):
-    
+   
+            searchSet = tf.cast(tf.gather(self.weights, self.boundaryPoints), dtype=np.float32)
+
+            X = tf.cast(1 - tf.exp(5*(it-self.iterations)/self.iterations), dtype=np.float32)
+            delta = tf.cast((it)**(-0.2) * X, dtype=np.float32)
+            radius = tf.cast(self.minRadius + X*(self.maxRadius*0.05**(it/self.iterations) - self.minRadius)*(it**(-0.25)),dtype=np.float32)
+
             self.trainingOperation(it, 
                                    self.produceRandomInputBoundary(), 
                                    searchSet,
                                    searchSetStart,
-                                   trainingSetStart)
+                                   trainingSetStart,
+                                   mask,
+                                   delta,
+                                   radius)
+            tf.compat.v1.scatter_update(self.weights, self.boundaryPoints, self.tmpWeights)
 
-            if(it%200==0):
+            if(it%200==0): 
+                plot(self.weights[:,0], self.weights[:,1], self.connection)
+                print(it, " ", self.iterations)
 
-        tf.compat.v1.scatter_update(self.weights, self.boundaryPoints, self.tmpWeights)
-        self.timer.stopTimer("train")
+        self.tmpWeights = tf.gather(self.weights, self.innerPoints)
+        searchSetStartCase1 = tf.gather(self.startWeights, self.boundaryPoints)
+        searchSetStartCase2 = self.startWeights
+        trainingSetStart = tf.gather(self.startWeights, self.innerPoints)
+        mask = tf.gather(self.mask, self.innerPoints)
+        delta = 0.02
+        radius = 2
+        k = 2
+        alpha_prob = self.noInternalPoints/(self.noBoundaryPoints*k + self.noInternalPoints)
 
-    def smooth(self):
-        """ smooth the grid """
-
-        self.timer.startTimer("smoothing")
-
-        alpha_prob = self.noInternalPoints/(self.noBoundaryPoints*4 + self.noInternalPoints)
-
+        print("smoothing")
+            
         for it in range(1, int(self.iterations)):
 
+            if(it%200==0): 
+                plot(self.weights[:,0], self.weights[:,1], self.connection)
             alpha = np.random.uniform(0, 1, 1)
+            if(alpha > alpha_prob):
 
-            #self.smoothingInternal(it)
-            #if(alpha > alpha_prob):
-            #    self.smoothingBoundary(it)
-            #else:
-            #    self.smoothingInternal(it)
+                searchSetCase1 = tf.cast(tf.gather(self.weights, self.boundaryPoints), dtype=np.float32)
+                self.trainingOperation(it, 
+                                       self.produceRandomInputBoundary(), 
+                                       searchSetCase1,
+                                       searchSetStartCase1,
+                                       trainingSetStart,
+                                       mask,
+                                       delta,
+                                       radius,
+                                       k)
 
-        self.timer.stopTimer("smoothing")
+                tf.compat.v1.scatter_update(self.weights, self.innerPoints, self.tmpWeights)
+            else:
+
+                searchSetCase2 = self.weights
+                self.trainingOperation(it, 
+                                       self.produceRandomInput(), 
+                                       searchSetCase2,
+                                       searchSetStartCase2,
+                                       trainingSetStart,
+                                       mask,
+                                       delta,
+                                       radius)
+
+                tf.compat.v1.scatter_update(self.weights, self.innerPoints, self.tmpWeights)
+
+        self.timer.stopTimer("train")
 
     def summary(self):
         """ Print a few grid information """
