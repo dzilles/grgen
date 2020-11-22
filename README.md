@@ -12,8 +12,8 @@ Currently this project is in a **pre-alpha stage and has a few limitations**:
 - only 2-dimensionsal
 
 **TODO**:
-- implementation of batch learning.
-- eliminate the border effect (bad quality of the mesh near boundaries) for batch learning. Without batch learning this algorithm is of limited use because of speed limitations.
+- implementation of batch learning
+- eliminate the border effect (bad quality of the mesh near boundaries) for batch learning. Without batch learning this algorithm is of limited use because of speed limitations
 - implementation of 1D and 3D meshes
 - implementation of different structured and unstructured mesh types
 - speed up the construction of the initial grid (e.g. by using some tree structure)
