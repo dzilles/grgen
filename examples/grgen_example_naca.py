@@ -1,6 +1,7 @@
 import numpy as np
 # 1) After installation, the package can be imported as follows
 from grgen.kohonen import Kohonen
+from grgen.auxiliary import Plotter
 
 def buildPolygonNACA(xx):
 
@@ -30,19 +31,21 @@ def buildPolygonNACA(xx):
 def main():
 
     # 2) First the geometry is built
-    geometry = buildPolygonNACA(30)
+    geometry = buildPolygonNACA(12)
 
     # 3) The model is initialized
-    som = Kohonen(0.03, geometry, training = "online", iterationsFactor=0.2)
-
+    som = Kohonen(0.03, geometry, vertexType="triangular")
     som.summary()
-    # 4) The training can be started after the initialization of the model
+
+    # 4) Set up plotting of the grid
+    som.plotter = Plotter("output", "naca", 200, "gif", fps=1)
+
+    # 5) The training can be started after the initialization of the model
     som.train()
 
-    # 5) A different algorithm is used for the smoothing of the grid
-    #som.smoothing()
-
     som.timer.printTimerSummary()
+    som.plotter.gif()
+    som.plotter.removePng()
 
 if __name__ == '__main__':
     main()

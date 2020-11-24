@@ -65,33 +65,13 @@ setup(
     keywords='grid, mesh, meshing, machine learning, Kohonen, som, self-organizing map',  
 
     packages=['grgen'],
-    #packages=find_packages('grgen'),
 
     python_requires='>=3.5, <4',
 
     install_requires=['tensorflow', 'numpy<1.19.0,>=1.16.0', 'matplotlib', 'scipy', 'shapely', 'imageio'],  # Optional
 
-    # extras_require={
-    #     'dev': ['check-manifest'],
-    #     'test': ['coverage'],
-    # },
-
-    # package_data={ 
-    #     'sample': ['package_data.dat'],
-    # },
-
-    # data_files=[('my_data', ['data/data_file'])],
-
-    # entry_points={
-    #     'console_scripts': [
-    #         'grgen=grgen.grgen',
-    #     ],
-    # },
-
     project_urls={
         'Bug Reports': 'https://github.com/dzilles/grgen/issues',
-    #    'Funding': '',
-    #    'Say Thanks!': '',
         'Source': 'https://github.com/dzilles/grgen/',
     },
 )

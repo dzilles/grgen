@@ -20,9 +20,9 @@
 
 import time
 import matplotlib.pyplot as plt
-#import sys
-#import imageio
-#import glob, os, re
+import sys
+import imageio
+import glob, os, re
 
 """ defenition of a few helper classes and functions """
 
@@ -69,33 +69,68 @@ class Timer:
 class Plotter:
     """ plotting of the mesh """
 
-    def __init__(self, path, outputName):
+    def __init__(self, path, outputName, step, option="skip", fps=20):
         """ initialization of the timer 
 
             :param path: name of the folder where the output is saved
             :param outputName: naming of the output
+            :param step: time step when output is saved or plotted
+            :param option: "skip", "plot" or "gif"
         """
 
         self.path = path
         self.outputName = outputName
+        self.step = step
+        self.option = option
+        self.fps = fps
 
-    def draw(self,it, x, y, con, png = False):
-        """ save figure as png or plot figure """
+    def plot(self,it, x, y, con):
+        """ save figure as png or plot figure 
 
-        if(png):
+            :param it: current iteration step
+            :param x: x-coordinates
+            :param y: y-coordinates
+            :param con: grid connectivity
+        """
 
-            fig, ax = plt.subplots() 
-            plt.triplot(self.weightsTf[:,0], self.weightsTf[:,1], self.connection)
-            plt.gca().set_aspect('equal', adjustable='box')
+        if(it%self.step==0):
 
-            name = '/naca_' + str(it) + '.png'
+            if(self.option == "gif"):
+                fig, ax = plt.subplots() 
+                plt.triplot(x, y, con)
+                plt.gca().set_aspect('equal', adjustable='box')
 
-            fig.savefig(name)
-            plt.close(fig)
+                name = self.path + "/" + self.outputName + '_' + str(it) + '.png'
 
+                fig.savefig(name)
+                plt.close(fig)
+
+            if(self.option == "plot"):
+
+                plt.clf()
+                plt.triplot(x, y, con) 
+                plt.gca().set_aspect('equal', adjustable='box')
+                plt.draw()
+                plt.pause(0.0001)
+
+    def show(self, x, y, con):
+        """ save figure as png or plot figure 
+
+            :param x: x-coordinates
+            :param y: y-coordinates
+            :param con: grid connectivity
+        """
+
+        plt.clf()
+        plt.triplot(x, y, con) 
+        plt.gca().set_aspect('equal', adjustable='box')
+        plt.show()
 
     def sorted_alphanumeric(self, data):
-        """ numerical sort of the data files in folder """
+        """ numerical sort of the data files 
+
+            :param data: data files to be sorted
+        """
 
         convert = lambda text: int(text) if text.isdigit() else text.lower()
         alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
@@ -104,44 +139,33 @@ class Plotter:
     def gif(self):
         """ produce a gif from the png files """
 
-        dir_name = "pics/"
-        filenames = self.sorted_alphanumeric(os.listdir(dir_name))
+        filenames = self.sorted_alphanumeric(os.listdir(self.path))
         print(filenames)
 
-        with imageio.get_writer('pics/naca.gif', mode='I', fps=20) as writer:
+        with imageio.get_writer(self.path + "/" + self.outputName + ".gif", mode='I', fps=self.fps) as writer:
             for filename in filenames:
 
                 if filename.endswith(".png"):
-                    image = imageio.imread(dir_name + filename)
+                    image = imageio.imread(self.path + "/" + filename)
                     writer.append_data(image)
 
     def removePng(self):
-        """ delete all pngs in folder """
+        """ delete all pngs in directory self.path """
 
-        dir_name = "pics/"
-        filenames = os.listdir(dir_name)
+        filenames = os.listdir(self.path)
 
         for filename in filenames:
             if filename.endswith(".png"):
-                os.remove(os.path.join(dir_name, filename))
-
-
+                os.remove(os.path.join(self.path, filename))
 
 
 def calculateGridQuality():
-    """ calculate the quality of the mesh """
+    """ TODO: calculate the quality of the mesh """
 
     cellAspectRatio = None
     skewness = None
     orthogonality = None
     smoothness = None
-
-def plot(x, y, con):
-    plt.clf()
-    plt.triplot(x, y, con) 
-    plt.gca().set_aspect('equal', adjustable='box')
-    plt.draw()
-    plt.pause(0.0001)
 
 
 

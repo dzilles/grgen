@@ -30,13 +30,17 @@ def main():
     geometry = buildPolygonSphere(0.3)
 
     # 3) The model is initialized
-    som = Kohonen(0.02, geometry, training = "online")
+    som = Kohonen(0.02, geometry)
 
-    # 4) The training can be started after the initialization of the model
-    som.training()
+    # 4) Set up plotting of the grid
+    som.plotter = Plotter("output", "naca", 200, "gif", fps=20)
 
-    # 5) A different algorithm is used for the smoothing of the grid
-    som.smoothing()
+    # 5) The training can be started after the initialization of the model
+    som.train()
+
+    som.timer.printTimerSummary()
+    som.plotter.gif()
+    som.plotter.removePng()
 
 if __name__ == '__main__':
     main()

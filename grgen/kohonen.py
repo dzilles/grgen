@@ -25,8 +25,7 @@ import random
 from shapely.geometry import Point, Polygon
 from shapely.ops import nearest_points
 from grgen.auxiliary import Timer
-from grgen.auxiliary import plot
-import matplotlib.pyplot as plt
+from grgen.auxiliary import Plotter
 
 """
 Implementation of the Kohonen self-organizing map where a grid is trained to represent some input geometry.
@@ -36,21 +35,20 @@ class Kohonen:
 
     """ The class of the self-organizing map """
 
-    def __init__(self, spacing, geometry, dim=2, s=0.5, iterations=None, iterationsFactor=1, minRadius=None, maxRadius=None, training="online", batchSize = 3000, gridType="unstructured", vertexType="triangular"):
+    def __init__(self, spacing, geometry, dim=2, s=0.1, iterations=None, iterationsFactor=1, minRadius=None, maxRadius=None, batchSize=None, vertexType="triangular"):
 
         """ Initialization of the Kohonen class 
 
             :param spacing: approximation of the grid spacing used to build the initial grid
-            :param geometry: geometry as sets of vertices inside a list. First entry is the outer boundary.
-            :param dim: dimensions 2 or 3, TODO implement 1D, 3D
+            :param geometry: geometry as sets of vertices inside a list. First entry is the outer boundary, second
+                             is the inner boundary. Only one inner boundary is supported.
+            :param dim: currently only 2D
             :param s: constant for the lateral connection of two neurons
             :param iterations: maximum number of iterations
             :param iterationsFactor: Factor to increase/decrease default iteration number
             :param minRadius: minimum radius
             :param maxRadius: maximum radius
-            :param training: "batch", "online" TODO implement batch
             :param batchSize: size of the training data for mini-batch learning
-            :param gridType: "structured", "unstructured" TODO implement structured
             :param vertexType: "triangular", "rectangular" TODO implement rectangular
         """
 
@@ -61,16 +59,13 @@ class Kohonen:
         self.iterations = iterations
         self.minRadius = minRadius
         self.maxRadius = maxRadius
-        self.training = training
         self.batchSize = batchSize
-        self.gridType = gridType
         self.vertexType = vertexType
 
         # Weights of the Kohonen network. Also the grid coordinates of all cells.
         self.weights = None
         self.startWeights = None
         # The position of coordinates can be fixed by using this array of booleans.
-        self.mask = None
         self.noPoints = None
         self.noInternalPoints = None
         self.noBoundaryPoints = None
@@ -78,14 +73,11 @@ class Kohonen:
         # Minimum and maximum coordinates of the geometry
         self.boundingBox = None
 
-        self.eps = 10e-5
+        self.eps = 10e-12
         self.dataType = np.float32
 
         # Storage for the learning operation
-        self.randomInput = None
-        self.squaredDistance = None
-        self.squaredDistanceStart = None
-        self.lateralConnection = None
+        self.tmpWeight = None
         self.geometryProbability = None
         self.vertexProbability = None
 
@@ -93,23 +85,24 @@ class Kohonen:
         self.connection = None
         self.neighbors = None
         self.boundary = None
-        self.boundaryPoints = None
-        self.innerPoints = None
+        self.boundaryIdx = None
+        self.innerIdx = None
         self.boundaryId = None
         self.boundaryFace = None
 
         # auxiliary
         self.timer = Timer()
+        self.plotter = None
 
         # Initialize som algorithm
 
-        # 1) Calculate bounding box
-        self.getBoundingBox()
+        # 1) Calculate bounding box and radius
+        self.calculateBoundingBox()
         if maxRadius == None:
             delta = np.subtract(self.boundingBox[:,1], self.boundingBox[:,0])
-            self.maxRadius = np.max(delta)/spacing + 10
+            self.maxRadius = np.max(delta) + 10*spacing
         if minRadius == None:
-            self.minRadius = 2
+            self.minRadius = 2*spacing
 
         # 2) Initialize weights of the network
         self.buildWeights()
@@ -121,23 +114,46 @@ class Kohonen:
         self.buildGridTopology()
 
         if iterations == None:
-            self.iterations = 10*self.noPoints
+            self.iterations = self.noPoints
         self.iterations = int(iterationsFactor*self.iterations)
 
         self.calculateBoundaryProbability()
 
-        self.mask = np.ones(tf.shape(self.weights), dtype=bool)
+    def maskCornerPoints(self):
+        """ move the corner points on the corner of the outer geometry and fix their positions """
 
-        #self.maskCornerPoints()
+        removeIndices = list()
 
-    #def maskCornerPoints():
+        for c in self.geometry[0]:
+    
+            tmp=tf.cast(c, dtype=self.dataType)
+            neighbor = self.findNN(tf.gather(self.weights, self.boundaryIdx), tmp)
+
+            tf.compat.v1.scatter_update(self.weights, tf.Variable(self.boundaryIdx[neighbor], dtype=np.int64), tmp)
+            removeIndices.append(neighbor)
+
+        self.boundaryIdx = np.delete(self.boundaryIdx, removeIndices)
 
         
+    def findNN(self, searchSet, coordinates):
+        """ find the nearest neighbor and return its index 
 
-    def getBoundingBox(self):
+            :param searchSet: set where the neighbor is searched
+            :param coordinates: the point that is searched for 
+        """
+
+        # squared euclidean distance of all weights to the input coordinates
+        squaredDistance = tf.reduce_sum( (searchSet - tf.expand_dims(coordinates, axis=0))**2, axis = 1)
+
+        # return the best matching unit
+        return tf.argmin(squaredDistance, axis=0)
+
+
+    def calculateBoundingBox(self):
         """ Calculate the bounding box of the input geometry """
 
-        self.timer.startTimer("getBoundingBox")
+        self.timer.startTimer("calculateBoundingBox")
+
         boundingBox = np.zeros((self.dim, 2, len(self.geometry)))
         index = 0
 
@@ -153,7 +169,8 @@ class Kohonen:
         b = np.max(boundingBox[:,1,:], axis =1).reshape(-1,1)
 
         self.boundingBox = np.concatenate((a, b), axis = 1)
-        self.timer.stopTimer("getBoundingBox")
+
+        self.timer.stopTimer("calculateBoundingBox")
 
     def buildWeights(self):
         """ Calculate weights (the initial coordinates of the grid) """
@@ -181,13 +198,13 @@ class Kohonen:
         x = x.reshape(-1,1)
         y = y.reshape(-1,1)
 
-        self.weights = np.concatenate((x, y), axis = 1)
-        self.noPoints = np.shape(self.weights)[0]
+        self.weights = tf.Variable(np.concatenate((x, y), axis = 1), dtype=self.dataType)
+        self.noPoints = tf.shape(self.weights)[0]
 
         self.timer.stopTimer("buildWeights")
 
     def removeGridCoordinates(self):
-        """ Remove coordinates inside geometry, TODO: extreme slow for large grids"""
+        """ Remove coordinates inside geometry """
 
         self.timer.startTimer("removeGridCoordinates")
         removeCoord = np.ones((tf.shape(self.weights)[0]), dtype=bool)
@@ -207,18 +224,18 @@ class Kohonen:
                 else:
                     removeCoord[i] = False
 
-        self.weights = self.weights[removeCoord,:]
+        self.weights = tf.Variable(tf.boolean_mask(self.weights, removeCoord), dtype=self.dataType)
         self.startWeights = self.weights
-        self.noPoints = np.shape(self.weights)[0]
+        self.noPoints = tf.shape(self.weights)[0]
 
         self.timer.stopTimer("removeGridCoordinates")
 
     def buildGridTopology(self):
-        """ Grid topology, TODO: extreme slow, add rectangular grid """
+        """ Grid topology """
 
         self.timer.startTimer("buildGridTopology")
 
-        triangulation = scipy.spatial.Delaunay(self.weights)
+        triangulation = scipy.spatial.Delaunay(self.weights.numpy())
         self.connection = triangulation.simplices
         self.neighbors = triangulation.neighbors
     
@@ -256,19 +273,22 @@ class Kohonen:
                 tmpBndry.append(self.connection[b[0],0])
                 tmpBndry.append(self.connection[b[0],1])
     
-        self.boundaryPoints = np.unique(np.array(tmpBndry))
-        self.innerPoints = np.arange(0, self.noPoints, 1, dtype=np.int32)
-        self.innerPoints = np.delete(self.innerPoints, self.boundaryPoints)
+        self.boundaryIdx = np.unique(np.array(tmpBndry))
+        self.innerIdx = np.arange(0, self.noPoints, 1, dtype=np.int32)
+        self.innerIdx = np.delete(self.innerIdx, self.boundaryIdx)
 
         self.noCells = np.shape(self.connection)[0]
 
-        self.noInternalPoints = np.shape(self.boundaryPoints)[0]
-        self.noBoundaryPoints = np.shape(self.innerPoints)[0]
+        self.noInternalPoints = np.shape(self.innerIdx)[0]
+        self.noBoundaryPoints = np.shape(self.boundaryIdx)[0]
 
         self.timer.stopTimer("buildGridTopology")
 
     def produceRandomInput(self, tensorflow=True):
-        """ produce random point for the learning step """
+        """ produce random point for the learning step 
+
+            :param tensorflow: return as tensorflow or numpy variable
+        """
 
         self.timer.startTimer("produceRandomInput")
 
@@ -291,7 +311,7 @@ class Kohonen:
             else:
                 if(outer.contains(point)):
                     if (tensorflow):
-                        return tf.Variable(randomCoordinate, dtype=np.float32)
+                        return tf.Variable(randomCoordinate, dtype=self.dataType)
                     else:
                         return randomCoordinate
                 else:
@@ -315,7 +335,10 @@ class Kohonen:
         self.geometryProbability = self.geometryProbability/np.sum(self.geometryProbability)
 
     def produceRandomInputBoundary(self, tensorflow=True):
-        """ produce random point for the learning step on the boundary """
+        """ produce random point for the learning step on the boundary 
+
+            :param tensorflow: return as tensorflow or numpy variable
+        """
 
         self.timer.startTimer("produceRandomInputBoundary")
 
@@ -337,7 +360,7 @@ class Kohonen:
         self.timer.stopTimer("produceRandomInputBoundary")
 
         if (tensorflow):
-            return tf.Variable(randomCoordinate, dtype=np.float32)
+            return tf.Variable(randomCoordinate, dtype=self.dataType)
         else:
             return randomCoordinate
 
@@ -350,7 +373,7 @@ class Kohonen:
 
             batchData[i,:] = self.produceRandomInputBoundary(False)
 
-        return tf.Variable(batchData, dtype=np.float32)
+        return tf.Variable(batchData, dtype=self.dataType)
 
     def moveBoundaryPoints(self):
         """ move boundary weights/points on the geometry boundary """
@@ -360,11 +383,13 @@ class Kohonen:
         inner = Polygon(self.geometry[1])
         outer = Polygon(self.geometry[0])
         
-        movement = np.zeros((self.noBoundaryPoints,2))
+        movement = np.zeros((np.shape(self.boundaryIdx)[0],2))
 
-        for idx in range(0, tf.shape(self.weightsBoundary)[0]):        
+        weightsBoundary = tf.Variable(tf.gather(self.weights, self.boundaryIdx), dtype=self.dataType).numpy()
 
-            point = Point(self.weightsBoundary[idx,0], self.weightsBoundary[idx,1])
+        for idx in range(0, np.shape(self.boundaryIdx)[0]):        
+
+            point = Point(weightsBoundary[idx,0], weightsBoundary[idx,1])
     
             pOuter, p = nearest_points(outer.boundary, point)
             pInner, p = nearest_points(inner.boundary, point)
@@ -377,128 +402,135 @@ class Kohonen:
                 movement[idx,0] = pInner.x
                 movement[idx,1] = pInner.y
 
-        self.weightsBoundary = movement
-        self.weights[self.boundaryPoints,:] = movement
+        print(np.shape(self.boundaryIdx))
+        print(np.shape(self.boundaryIdx))
+
+        tf.compat.v1.scatter_update(self.weights, self.boundaryIdx, movement)
 
         self.timer.stopTimer("moveBoundaryPoints")
 
-    def trainingOperation(self, it, inputData, searchSet, searchSetStart, trainingSetStart, mask, delta, radius, k=0):
-        """ ordering stage for all cells """
+    def trainingOperation(self, inputData, searchSet, searchSetStart, trainingSetStart, delta, radius, k=0, boundaryTraining = False):
+        """ ordering stage for all cells 
 
-        # squared euclidean distance of all weights to the random input data
-        squaredDistance = tf.reduce_sum( (searchSet - tf.expand_dims(inputData, axis=0))**2, axis = 1)
+            :param inputData: random training data
+            :param searchSet: set for nearest neighbor search
+            :param searchSetStart: coordinate of the bmu is stored here
+            :param trainingSetStart: set for neighborhood calculation
+            :param delta: learning rate
+            :param radius: learning radius
+            :param k: parameter to eliminate the border effect
+            :param boundaryTraining: exchange random coordinate with nearest boundary point
+        """
 
-        # calculate the best matching unit
-        bmuIndex = tf.argmin(squaredDistance, axis=0)
+        # find the best matching unit
+        bmuIndex = self.findNN(searchSet, inputData)
 
-        # calculate the neighbourhood
-        squaredDistanceStart = tf.cast(tf.reduce_sum( (trainingSetStart - tf.expand_dims(searchSetStart[bmuIndex,:], axis=0))**2, axis = 1)/(self.spacing**2), dtype=np.float32)
+        if(k > 0 or boundaryTraining):
 
-        lateralConnection = self.s**((tf.math.sqrt(squaredDistanceStart) + k)**2/(radius**2))
+            inputData = searchSetStart[bmuIndex, :]
 
-        tf.tensor_scatter_nd_update(self.tmpWeights, mask, tf.boolean_mask(tf.Variable(self.tmpWeights + (tf.expand_dims(delta*lateralConnection*(1 + k*tf.math.sqrt(squaredDistanceStart)), axis=1)*(tf.expand_dims(inputData, axis=0) - self.tmpWeights)), dtype=np.float32), mask))
+        # calculate the neighbourhood and connectivity
+        squaredDistanceStart = tf.reduce_sum( 
+                               (trainingSetStart - tf.expand_dims(searchSetStart[bmuIndex,:], axis=0))**2, axis = 1)
 
-    def trainingOperationBatch(self, it, inputData, searchSet, searchSetStart, trainingSetStart):
-        """ ordering stage for all cells batch learning (not working)"""
+        lateralConnection = self.s**((tf.math.sqrt(squaredDistanceStart) + k*self.spacing)**2/(radius**2))
 
-        self.squaredDistance = tf.reduce_sum(tf.pow(tf.subtract(tf.expand_dims(searchSet, axis=0),tf.expand_dims(inputData, axis=1)), 2), 2)
-
-        bmuIndex = tf.argmin(self.squaredDistance, axis=1)
-
-        X = tf.cast(1 - tf.exp(5*(it-self.iterations)/self.iterations), dtype=np.float32)
-
-        self.squaredDistanceStart = tf.cast(tf.math.sqrt(tf.reduce_sum(tf.expand_dims(searchSetStart, axis=0) - tf.expand_dims(tf.gather(searchSetStart, bmuIndex), axis=1), 2)**2), dtype=np.float32)
-
-        self.squaredDistanceStart = self.squaredDistanceStart/(self.spacing)
-
-        self.lateralConnection = delta*self.s**(self.squaredDistanceStart/(radius))
-
-        self.numerator = tf.reduce_sum(tf.expand_dims(self.lateralConnection, axis=-1) * tf.expand_dims(inputData, axis=1), axis=0)
-    
-        self.denominator = tf.expand_dims(tf.reduce_sum(self.lateralConnection,axis=0)+10e-20, axis=-1)
-
-        self.tmpWeights = self.numerator / self.denominator
+        # update neighborhood
+        self.tmpWeights = self.tmpWeights + (
+                        tf.expand_dims(delta*lateralConnection*(1 + k*tf.math.sqrt(squaredDistanceStart)), axis=1)
+                        *(tf.expand_dims(inputData, axis=0) - self.tmpWeights))
 
     def train(self):
         """ train the grid """
 
-        print("adaption")
-
         self.timer.startTimer("train")
 
-        self.weights = tf.Variable(self.weights, dtype=np.float32)
-        self.tmpWeights = tf.gather(self.weights, self.boundaryPoints)
-        searchSetStart = tf.gather(self.startWeights, self.boundaryPoints)
-        trainingSetStart = tf.gather(self.startWeights, self.boundaryPoints)
-        mask = tf.gather(self.mask, self.boundaryPoints)
+        print("adaption")
 
+        #self.moveBoundaryPoints()
+        #self.startWeights = self.weights
 
-        for it in range(1, int(self.iterations)):
+        #self.tmpWeights = self.weights#tf.Variable(tf.gather(self.weights, self.boundaryIdx), dtype=self.dataType)
+        self.tmpWeights = tf.Variable(self.weights, dtype=self.dataType)
+        searchSetStart = tf.gather(self.startWeights, self.boundaryIdx)
+        searchSet = tf.gather(self.startWeights, self.boundaryIdx)
+        trainingSetStart = self.startWeights  #tf.gather(self.weights, self.boundaryIdx)
+
+        timeIt = 1
+
+        for it in range(1, int(10*self.noBoundaryPoints/self.noPoints*self.iterations)):
    
-            searchSet = tf.cast(tf.gather(self.weights, self.boundaryPoints), dtype=np.float32)
+            X = tf.cast(1 - tf.exp(5*(it-self.iterations)/self.iterations), dtype=self.dataType)
+            delta = 0.225*tf.cast((it)**(-0.2) * X, dtype=self.dataType)
+            #radius = 0.02*tf.cast(self.minRadius + X*(self.maxRadius*1.05**(it/self.iterations) - self.minRadius)*(it**(-0.25)),dtype=self.dataType)
+            radius = 2*self.spacing
 
-            X = tf.cast(1 - tf.exp(5*(it-self.iterations)/self.iterations), dtype=np.float32)
-            delta = tf.cast((it)**(-0.2) * X, dtype=np.float32)
-            radius = tf.cast(self.minRadius + X*(self.maxRadius*0.05**(it/self.iterations) - self.minRadius)*(it**(-0.25)),dtype=np.float32)
-
-            self.trainingOperation(it, 
-                                   self.produceRandomInputBoundary(), 
+            self.trainingOperation(self.produceRandomInputBoundary(), 
                                    searchSet,
                                    searchSetStart,
                                    trainingSetStart,
-                                   mask,
                                    delta,
-                                   radius)
-            tf.compat.v1.scatter_update(self.weights, self.boundaryPoints, self.tmpWeights)
+                                   radius,
+                                   boundaryTraining = False)
+ 
 
-            if(it%200==0): 
-                plot(self.weights[:,0], self.weights[:,1], self.connection)
-                print(it, " ", self.iterations)
+            #tf.compat.v1.scatter_update(self.weights, self.boundaryIdx, self.tmpWeights)
+            if(not self.plotter == None):
+                self.plotter.plot(timeIt, self.weights[:,0], self.weights[:,1], self.connection)
+            timeIt += 1
 
-        self.tmpWeights = tf.gather(self.weights, self.innerPoints)
-        searchSetStartCase1 = tf.gather(self.startWeights, self.boundaryPoints)
+
+        self.weights = tf.Variable(self.tmpWeights, dtype=self.dataType)
+
+        self.maskCornerPoints()
+        self.moveBoundaryPoints()
+
+        self.tmpWeights = tf.Variable(tf.gather(self.weights, self.innerIdx), dtype=self.dataType)
+        searchSetStartCase1 = tf.gather(self.startWeights, self.boundaryIdx)
         searchSetStartCase2 = self.startWeights
-        trainingSetStart = tf.gather(self.startWeights, self.innerPoints)
-        mask = tf.gather(self.mask, self.innerPoints)
-        delta = 0.02
-        radius = 2
-        k = 2
+        trainingSetStart = tf.gather(self.startWeights, self.innerIdx)
+        delta = 0.04*0.05
+        k = 10
+        radius = k*self.spacing
         alpha_prob = self.noInternalPoints/(self.noBoundaryPoints*k + self.noInternalPoints)
 
         print("smoothing")
             
-        for it in range(1, int(self.iterations)):
+        for it in range(1, int(self.noInternalPoints/self.noPoints*self.iterations)):
 
-            if(it%200==0): 
-                plot(self.weights[:,0], self.weights[:,1], self.connection)
             alpha = np.random.uniform(0, 1, 1)
             if(alpha > alpha_prob):
 
-                searchSetCase1 = tf.cast(tf.gather(self.weights, self.boundaryPoints), dtype=np.float32)
-                self.trainingOperation(it, 
-                                       self.produceRandomInputBoundary(), 
+                searchSetCase1 = tf.cast(tf.gather(self.weights, self.boundaryIdx), dtype=self.dataType)
+                self.trainingOperation(self.produceRandomInputBoundary(), 
                                        searchSetCase1,
                                        searchSetStartCase1,
                                        trainingSetStart,
-                                       mask,
                                        delta,
                                        radius,
                                        k)
+                tf.compat.v1.scatter_update(self.weights, self.innerIdx, self.tmpWeights)
 
-                tf.compat.v1.scatter_update(self.weights, self.innerPoints, self.tmpWeights)
+                if(not self.plotter == None):
+                    self.plotter.plot(timeIt, self.weights[:,0], self.weights[:,1], self.connection)
+                timeIt += 1
+
             else:
 
                 searchSetCase2 = self.weights
-                self.trainingOperation(it, 
-                                       self.produceRandomInput(), 
+
+                self.trainingOperation(self.produceRandomInput(), 
                                        searchSetCase2,
                                        searchSetStartCase2,
                                        trainingSetStart,
-                                       mask,
                                        delta,
-                                       radius)
+                                       radius,
+                                       boundaryTraining=True)
+                tf.compat.v1.scatter_update(self.weights, self.innerIdx, self.tmpWeights)
 
-                tf.compat.v1.scatter_update(self.weights, self.innerPoints, self.tmpWeights)
+                if(not self.plotter == None):
+                    self.plotter.plot(timeIt, self.weights[:,0], self.weights[:,1], self.connection)
+                timeIt += 1
 
         self.timer.stopTimer("train")
 
@@ -523,3 +555,63 @@ class Kohonen:
         print("noCells:         ", np.shape(self.connection)[0])
         print("noBoundaryCells: ", np.shape(self.boundary)[0])
         print("_________________________________________________________")
+
+#    def trainingOperationBatch(self, inputData, searchSet, searchSetStart, trainingSetStart):
+#       """ ordering stage for all cells batch learning (not working)
+#
+#           :param inputData: random training data
+#           :param searchSet: set for nearest neighbor search
+#           :param searchSetStart: coordinate of the bmu is stored here
+#           :param trainingSetStart: set for neighborhood calculation
+#        """
+#
+#        radius = self.minRadius
+#
+#        self.squaredDistance = tf.reduce_sum(tf.pow(tf.subtract(tf.expand_dims(searchSet, axis=0),tf.expand_dims(inputData, axis=1)), 2), 2)
+#
+#        bmuIndex = tf.argmin(self.squaredDistance, axis=1)
+#
+#
+#        self.squaredDistanceStart = tf.cast(tf.math.sqrt(tf.reduce_sum(tf.expand_dims(searchSetStart, axis=0) - tf.expand_dims(tf.gather(searchSetStart, bmuIndex), axis=1), 2)**2), dtype=self.dataType)
+#
+#        self.squaredDistanceStart = self.squaredDistanceStart/(self.spacing)
+#
+#    
+#        self.lateralConnection = tf.math.exp(self.squaredDistanceStart/(radius))
+#
+#        self.numerator = tf.reduce_sum(tf.expand_dims(self.lateralConnection, axis=-1) * tf.expand_dims(inputData, axis=1), axis=0)
+#    
+#        self.denominator = tf.expand_dims(tf.reduce_sum(self.lateralConnection,axis=0)+self.eps, axis=-1)
+#
+#        self.tmpWeights = self.numerator / self.denominator
+#
+#
+#    def batchTrain(self):
+#        """ batch training of the grid (not working)"""
+#
+#        self.timer.startTimer("bacthTrain")
+#
+#        self.weights = tf.Variable(self.weights, dtype=self.dataType)
+#        self.tmpWeights = tf.gather(self.weights, self.boundaryIdx)
+#        searchSetStart = self.startWeights
+#        trainingSetStart = self.startWeights
+#
+#        for it in range(1, int(self.iterations)):
+#   
+#            searchSet = tf.cast(tf.gather(self.weights, self.boundaryIdx), dtype=self.dataType)
+#
+#            self.trainingOperationBatch(self.produceRandomBatch(), 
+#                                        searchSet,
+#                                        searchSetStart,
+#                                        trainingSetStart)
+#
+#            self.weights = self.tmpWeights
+#
+#            if(it%1==0): 
+#                plot(self.weights[:,0], self.weights[:,1], self.connection)
+#                print(it, " ", self.iterations)
+#
+#       self.timer.stopTimer("batchTrain")
+#
+#
+
