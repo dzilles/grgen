@@ -5,7 +5,7 @@ based on the work of T. Kohonen [[1]](#1) and O. Nechaeva [[2]](#2) where some i
 ![NACA](https://github.com/dzilles/grgen/raw/main/examples/naca.gif)
 
 Currently this project is in a **pre-alpha/conceptional stage and has a few limitations**:
-- limited speed especially for large meshes: 
+- limited speed especially for large meshes
 - only unstructured triangular meshes: it is possible to use this algorithm for structured meshes since the mesh topology remains
 - adaptive meshes are not implemented
 - grid quality can't be guaranteed
